@@ -95,6 +95,8 @@
   let hoveredNode = null;
   let connectedNodeIds = new Set();
   let panX = 0, panY = 0, zoomLevel = 1;
+  let targetZoom = 1, targetPanX = 0, targetPanY = 0;
+  const ZOOM_LERP = 0.12;
   let dragNode = null;
   let noiseTime = 0;
   const DRIFT_SPEED = 0.006;
@@ -313,6 +315,11 @@
 
     noiseTime += DRIFT_SPEED;
 
+    // Smooth zoom interpolation (Google Maps-like)
+    zoomLevel = lerp(zoomLevel, targetZoom, ZOOM_LERP);
+    panX = lerp(panX, targetPanX, ZOOM_LERP);
+    panY = lerp(panY, targetPanY, ZOOM_LERP);
+
     push();
     translate(panX, panY);
     scale(zoomLevel);
@@ -524,8 +531,8 @@
       dragNode.fx = w.x;
       dragNode.fy = w.y;
     } else if (isPanning) {
-      panX += mouseX - lastMX;
-      panY += mouseY - lastMY;
+      targetPanX += mouseX - lastMX;
+      targetPanY += mouseY - lastMY;
     }
     lastMX = mouseX; lastMY = mouseY;
   }
@@ -540,14 +547,27 @@
     isPanning = false;
   }
 
+  function zoomAt(screenX, screenY, factor) {
+    const wx = (screenX - targetPanX) / targetZoom;
+    const wy = (screenY - targetPanY) / targetZoom;
+    const nz = constrain(targetZoom * factor, 0.15, 5);
+    targetPanX = screenX - wx * nz;
+    targetPanY = screenY - wy * nz;
+    targetZoom = nz;
+  }
+
   function mouseWheel(event) {
-    const w = screenToWorld(mouseX, mouseY);
-    const factor = event.delta > 0 ? 0.93 : 1.07;
-    const nz = constrain(zoomLevel * factor, 0.15, 5);
-    panX = mouseX - w.x * nz;
-    panY = mouseY - w.y * nz;
-    zoomLevel = nz;
+    const factor = event.delta > 0 ? 0.92 : 1.08;
+    zoomAt(mouseX, mouseY, factor);
     return false;
+  }
+
+  function keyPressed() {
+    if (key === '=' || key === '+') {
+      zoomAt(windowWidth / 2, windowHeight / 2, 1.15);
+    } else if (key === '-' || key === '_') {
+      zoomAt(windowWidth / 2, windowHeight / 2, 0.85);
+    }
   }
   </script>
 </body>
