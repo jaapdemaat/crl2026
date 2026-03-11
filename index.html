@@ -409,7 +409,7 @@
 
     const lines = [];
     if (node.type === 'post') {
-      lines.push(node.label.length > 55 ? node.label.slice(0, 55) + '...' : node.label);
+      lines.push(node.label.length > 45 ? node.label.slice(0, 45) + '...' : node.label);
       if (node.tags.length) {
         const t = node.tags.slice(0, 6).join(', ');
         lines.push('Tags: ' + t + (node.tags.length > 6 ? '...' : ''));
@@ -421,11 +421,15 @@
       lines.push(node.count + ' references');
     }
 
-    textSize(11);
     textAlign(LEFT, TOP);
-    const maxW = max(...lines.map(l => textWidth(l)));
     const pad = 10;
     const lh = 16;
+    let maxW = 0;
+    lines.forEach((ln, i) => {
+      textStyle(i === 0 ? BOLD : NORMAL);
+      textSize(i === 0 ? 11 : 9);
+      maxW = max(maxW, textWidth(ln));
+    });
     const bw = maxW + pad * 2;
     const bh = lines.length * lh + pad * 2;
 
@@ -438,7 +442,7 @@
     lines.forEach((ln, i) => {
       fill(i === 0 ? 0 : 80);
       textStyle(i === 0 ? BOLD : NORMAL);
-      textSize(i === 0 ? 12 : 10);
+      textSize(i === 0 ? 11 : 9);
       text(ln, tx + pad, ty + pad + i * lh);
     });
     textStyle(NORMAL);
