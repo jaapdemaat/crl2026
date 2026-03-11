@@ -128,7 +128,18 @@
       p.tags.length > 0 || p.pathways.length > 0 || p.units.length > 0
     );
 
-    assignColors(data.allPathways, pathwayColors);
+    // Group pathways by platform so P1/P2 variants share the same colour
+    const platformColors = {
+      'E&E': '#4ECDC4',   // Teal — Experience & Environment
+      'I&S': '#45B7D1',   // Blue — Information & Systems
+      'T&M': '#FF6B6B',   // Red — Time & Movement
+      'S&I': '#BB8FCE',   // Purple — Strategy & Identity
+      'N&V': '#F7DC6F',   // Yellow — Narrative & Voice
+    };
+    data.allPathways.forEach(p => {
+      const match = Object.keys(platformColors).find(k => p.includes(k));
+      pathwayColors[p] = match ? platformColors[match] : '#96CEB4';
+    });
     assignColors(data.allUnits, unitColors);
 
     const tagCounts = {};
