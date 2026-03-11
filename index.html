@@ -106,6 +106,15 @@
   const HOVER_LERP = 0.12;
   let lastMX = 0, lastMY = 0;
   let isPanning = false;
+  let mouseWorldX = 0, mouseWorldY = 0;
+
+  // Frame-rate independent lerp — keeps animations consistent
+  // even when FPS drops (e.g. dense Tags view)
+  function smoothLerp(current, target, rate) {
+    const dt = min(deltaTime, 50) / 16.667;   // normalise to 60 fps
+    const t = 1 - pow(1 - rate, dt);
+    return current + (target - current) * t;
+  }
 
   // ─── COLORS ───────────────────────────────────────────────────
   const pathwayColors = {};
@@ -177,10 +186,16 @@
     graphLinks = [];
     const pathwayNodeMap = {}, unitNodeMap = {}, tagNodeMap = {};
 
+    // Format pathway labels: "P2-T&M" → "U6 T&M #2"
+    function fmtPathway(name) {
+      const m = name.match(/^P([12])-?(.+)$/);
+      return m ? ('U6 ' + m[2] + ' #' + m[1]) : name;
+    }
+
     data.allPathways.forEach(p => {
       const id = 'pw-' + p;
       pathwayNodeMap[p] = id;
-      graphNodes.push({ id, label: p, type: 'pathway', radius: 18, color: pathwayColors[p], count: 0 });
+      graphNodes.push({ id, label: fmtPathway(p), type: 'pathway', radius: 18, color: pathwayColors[p], count: 0 });
     });
 
     data.allUnits.forEach(u => {
@@ -242,6 +257,27 @@
   }
 
   // ─── D3 SIMULATION ───────────────────────────────────────────
+
+  // Custom force: gentle gravity toward cursor position
+  function forceCursorGravity(strength) {
+    let nodes;
+    function force(alpha) {
+      const RADIUS = 400;          // influence radius in world-space
+      for (const node of nodes) {
+        const dx = mouseWorldX - node.x;
+        const dy = mouseWorldY - node.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 1 || d > RADIUS) continue;
+        const falloff = 1 - d / RADIUS;        // linear falloff
+        const s = strength * alpha * falloff * falloff;   // quadratic ease
+        node.vx += dx * s;
+        node.vy += dy * s;
+      }
+    }
+    force.initialize = function(_) { nodes = _; };
+    return force;
+  }
+
   function setupSimulation() {
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
@@ -253,6 +289,7 @@
       .force('link', d3.forceLink([]).id(d => d.id).distance(35).strength(0.1))
       .force('x', d3.forceX(cx).strength(0.015))
       .force('y', d3.forceY(cy).strength(0.015))
+      .force('cursor', forceCursorGravity(0.12))
       .alphaDecay(0.012)
       .velocityDecay(0.4);
 
@@ -354,8 +391,8 @@
         targetLA = 18; targetLW = 0.3;
       }
       if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.3; }
-      link.displayAlpha = lerp(link.displayAlpha, targetLA, HOVER_LERP);
-      link.displayWeight = lerp(link.displayWeight, targetLW, HOVER_LERP);
+      link.displayAlpha = smoothLerp(link.displayAlpha, targetLA, HOVER_LERP);
+      link.displayWeight = smoothLerp(link.displayWeight, targetLW, HOVER_LERP);
 
       if (useColor && link.displayAlpha > 20) {
         const lc = color(tgt.color || src.color);
@@ -381,12 +418,12 @@
       const isConn = hoveredNode && connectedNodeIds.has(node.id);
       const isDim = hoveredNode && !isConn && !isHov;
 
-      const baseA = isActiveHub ? 230 : 130;
+      const baseA = isActiveHub ? 255 : 130;
       const targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 220 : baseA));
-      node.displayAlpha = lerp(node.displayAlpha, targetA, HOVER_LERP);
+      node.displayAlpha = smoothLerp(node.displayAlpha, targetA, HOVER_LERP);
 
       const targetR = (isHov ? node.radius * 1.4 : node.radius) * breathe;
-      node.displayRadius = lerp(node.displayRadius, targetR, HOVER_LERP);
+      node.displayRadius = smoothLerp(node.displayRadius, targetR, HOVER_LERP);
     }
 
     // Update all visible nodes
@@ -431,15 +468,21 @@
 
         // Label text above the circle
         fill(0, 0, 0, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 180));
-        textSize(max(9, node.displayRadius * 0.45));
+        const labelSize = max(9, node.displayRadius * 0.45);
+        textSize(labelSize);
         textStyle(NORMAL);
         text(node.label, nx, ny - node.displayRadius - 10);
 
-        // Count number in center (white)
+        // Count number in center (white) — use BASELINE alignment
+        // and manually center using ascent, since digits have no descenders
         fill(255, 255, 255, min(node.displayAlpha, 240));
-        textSize(max(7, node.displayRadius * 0.35));
+        const countSize = max(7, node.displayRadius * 0.35);
+        textSize(countSize);
         textStyle(NORMAL);
-        text(node.count, nx, ny - 1);
+        textAlign(CENTER, BASELINE);
+        const digitHeight = textAscent();   // digits sit entirely above baseline
+        text(node.count, nx, ny + digitHeight * 0.5);
+        textAlign(CENTER, CENTER);          // restore for next iteration
       }
     });
 
@@ -463,7 +506,8 @@
       if (node.pathways.length) lines.push('Pathways: ' + node.pathways.join(', '));
       if (node.units.length) lines.push('Units: ' + node.units.join(', '));
     } else {
-      lines.push(node.label);
+      // Split multi-line labels into separate tooltip lines
+      node.label.split('\n').forEach(part => lines.push(part));
       lines.push(node.count + ' references');
 
       // List connected post titles
@@ -539,7 +583,8 @@
       if (n.x == null) continue;
       if (n.type !== 'post' && n.type !== modeType) continue;
       const d = dist(wx, wy, n.x, n.y);
-      const hr = max(n.radius, 6);
+      // Generous hit radius for hubs so smaller circles are easy to hover
+      const hr = n.type === 'post' ? max(n.radius, 6) : max(n.radius + 4, 12);
       if (d < hr && d < best) { closest = n; best = d; }
     }
     return closest;
@@ -548,6 +593,10 @@
   function mouseMoved() {
     if (!graphNodes) return;
     const w = screenToWorld(mouseX, mouseY);
+    mouseWorldX = w.x;
+    mouseWorldY = w.y;
+    // Keep simulation gently alive so cursor gravity has effect
+    if (simulation.alpha() < 0.02) simulation.alpha(0.02).restart();
     hoveredNode = findNodeAt(w.x, w.y);
 
     connectedNodeIds.clear();
