@@ -131,13 +131,13 @@
 
     // Group pathways by platform so P1/P2 variants share the same colour
     const platformColors = {
-      'E&E': '#0EA5E9',   // Sapphire
-      'I&S': '#8B5CF6',   // Amethyst
-      'T&M': '#EC4899',   // Ruby
-      'S&I': '#10B981',   // Emerald
-      'N&V': '#F59E0B',   // Topaz
+      'E&E': '#3B82F6',   // Sapphire — royal blue
+      'I&S': '#7C3AED',   // Amethyst — deep violet
+      'T&M': '#DB2777',   // Ruby — deep rose
+      'S&I': '#059669',   // Emerald — forest green
+      'N&V': '#D97706',   // Topaz — deep amber
     };
-    const extraColors = { 'Core Reading': '#6B7280', 'Lectures & Debates': '#06B6D4' };
+    const extraColors = { 'Core Reading': '#6B7280', 'Lectures & Debates': '#0D9488' };
     data.allPathways.forEach(p => {
       const match = Object.keys(platformColors).find(k => p.includes(k));
       pathwayColors[p] = match ? platformColors[match] : (extraColors[p] || '#6B3FA0');
@@ -336,9 +336,9 @@
       if (hoveredNode && !isHL) {
         targetLA = 8; targetLW = 0.2;
       } else if (isHL) {
-        targetLA = 100; targetLW = 1.0; useColor = true;
+        targetLA = 140; targetLW = 1.2; useColor = true;
       } else {
-        targetLA = 14; targetLW = 0.25;
+        targetLA = 18; targetLW = 0.3;
       }
       if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.3; }
       link.displayAlpha = lerp(link.displayAlpha, targetLA, HOVER_LERP);
@@ -374,7 +374,9 @@
       const isConn = hoveredNode && connectedNodeIds.has(node.id);
       const isDim = hoveredNode && !isConn && !isHov;
 
-      const targetA = isDim ? 12 : (isHov ? 220 : (isConn ? 160 : 85));
+      // Hubs get higher base alpha so white count text is readable
+      const baseA = isActiveHub ? 210 : 130;
+      const targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 220 : baseA));
       node.displayAlpha = lerp(node.displayAlpha, targetA, HOVER_LERP);
 
       const targetR = (isHov ? node.radius * 1.4 : node.radius) * breathe;
@@ -387,13 +389,23 @@
       fill(c);
       ellipse(nx, ny, node.displayRadius * 2, node.displayRadius * 2);
 
-      // Labels for hub nodes
+      // Labels for hub nodes — name above, count in center
       if (isActiveHub && node.displayAlpha > 20) {
-        fill(0, 0, 0, min(node.displayAlpha, isHov ? 255 : 180));
         noStroke();
         textAlign(CENTER, CENTER);
-        textSize(max(9, node.displayRadius * 0.5));
-        text(node.label, nx, ny + node.displayRadius + 12);
+
+        // Label text above the circle
+        fill(0, 0, 0, min(node.displayAlpha, isHov ? 255 : 180));
+        textSize(max(9, node.displayRadius * 0.45));
+        textStyle(NORMAL);
+        text(node.label, nx, ny - node.displayRadius - 10);
+
+        // Count number in center (white)
+        fill(255, 255, 255, min(node.displayAlpha, 240));
+        textSize(max(10, node.displayRadius * 0.6));
+        textStyle(BOLD);
+        text(node.count, nx, ny);
+        textStyle(NORMAL);
       }
     });
 
