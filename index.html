@@ -193,10 +193,10 @@
     });
 
     posts.forEach(post => {
-      let postColor = '#444';
-      if (post.pathways.length > 0) postColor = pathwayColors[post.pathways[0]] || '#444';
-      else if (post.units.length > 0) postColor = unitColors[post.units[0]] || '#444';
-      else for (const t of post.tags) { if (tagColors[t]) { postColor = tagColors[t]; break; } }
+      // Post dots always use pathway colour; fallback to neutral grey
+      let postColor = '#AAAAAA';
+      if (post.pathways.length > 0) postColor = pathwayColors[post.pathways[0]] || '#AAAAAA';
+      else if (post.units.length > 0) postColor = unitColors[post.units[0]] || '#AAAAAA';
 
       graphNodes.push({
         id: post.id, label: post.title, type: 'post', radius: 3,
