@@ -336,9 +336,9 @@
       if (hoveredNode && !isHL) {
         targetLA = 8; targetLW = 0.2;
       } else if (isHL) {
-        targetLA = 140; targetLW = 1.2; useColor = true;
+        targetLA = 100; targetLW = 1.0; useColor = true;
       } else {
-        targetLA = 18; targetLW = 0.3;
+        targetLA = 14; targetLW = 0.25;
       }
       if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.3; }
       link.displayAlpha = lerp(link.displayAlpha, targetLA, HOVER_LERP);
@@ -374,7 +374,7 @@
       const isConn = hoveredNode && connectedNodeIds.has(node.id);
       const isDim = hoveredNode && !isConn && !isHov;
 
-      const targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 210 : 130));
+      const targetA = isDim ? 12 : (isHov ? 220 : (isConn ? 160 : 85));
       node.displayAlpha = lerp(node.displayAlpha, targetA, HOVER_LERP);
 
       const targetR = (isHov ? node.radius * 1.4 : node.radius) * breathe;
