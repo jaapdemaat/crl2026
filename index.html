@@ -39,7 +39,7 @@
       letter-spacing: 0.03em;
     }
     .toggle-container {
-      display: flex;
+      display: inline-flex;
       background: rgba(0,0,0,0.04);
       border-radius: 8px;
       overflow: hidden;
@@ -400,12 +400,11 @@
         textStyle(NORMAL);
         text(node.label, nx, ny - node.displayRadius - 10);
 
-        // Count number in center (white)
+        // Count number in center (white, regular weight, smaller)
         fill(255, 255, 255, min(node.displayAlpha, 240));
-        textSize(max(10, node.displayRadius * 0.6));
-        textStyle(BOLD);
-        text(node.count, nx, ny);
+        textSize(max(7, node.displayRadius * 0.35));
         textStyle(NORMAL);
+        text(node.count, nx, ny - 1);
       }
     });
 
