@@ -249,7 +249,7 @@
     simulation = d3.forceSimulation(graphNodes)
       .force('charge', d3.forceManyBody().strength(-4))
       .force('center', d3.forceCenter(cx, cy).strength(0.04))
-      .force('collision', d3.forceCollide().radius(d => d.radius + 1))
+      .force('collision', d3.forceCollide().radius(d => d.type === 'post' ? d.radius + 1 : d.radius + 14))
       .force('link', d3.forceLink([]).id(d => d.id).distance(35).strength(0.1))
       .force('x', d3.forceX(cx).strength(0.015))
       .force('y', d3.forceY(cy).strength(0.015))
@@ -274,9 +274,9 @@
       .strength(mode === 'tags' ? 0.1 : 0.18);
 
     simulation.force('charge').strength(d => {
-      if (mode === 'pathways') return d.type === 'pathway' ? -160 : (d.type === 'post' ? -1.5 : -8);
-      if (mode === 'units') return d.type === 'unit' ? -200 : (d.type === 'post' ? -1.5 : -8);
-      return d.type === 'tag' ? -70 : (d.type === 'post' ? -1 : -8);
+      if (mode === 'pathways') return d.type === 'pathway' ? -250 : (d.type === 'post' ? -1.5 : -8);
+      if (mode === 'units') return d.type === 'unit' ? -300 : (d.type === 'post' ? -1.5 : -8);
+      return d.type === 'tag' ? -120 : (d.type === 'post' ? -1 : -8);
     });
 
     simulation.force('x').strength(mode === 'tags' ? 0.008 : 0.012);
@@ -368,52 +368,74 @@
       line(src.x + sdx, src.y + sdy, tgt.x + tdx, tgt.y + tdy);
     });
 
-    // Draw nodes
-    noStroke();
-    graphNodes.forEach(node => {
-      if (node.x == null) return;
-
+    // Helper: update node display state
+    function updateNode(node) {
       const isHub = node.type !== 'post';
       const isActiveHub = isHub && node.type === modeType;
-      if (isHub && !isActiveHub) return;
 
-      const dx = (noise(node.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
-      const dy = (noise(node.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      node._dx = (noise(node.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      node._dy = (noise(node.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
       const breathe = 1 + sin(noiseTime / DRIFT_SPEED * BREATHE_SPEED + node.noiseSeedX) * BREATHE_AMOUNT;
-      const nx = node.x + dx;
-      const ny = node.y + dy;
 
       const isHov = hoveredNode && hoveredNode.id === node.id;
       const isConn = hoveredNode && connectedNodeIds.has(node.id);
       const isDim = hoveredNode && !isConn && !isHov;
 
-      // Hubs get higher base alpha so white count text is readable
-      const baseA = isActiveHub ? 210 : 130;
+      const baseA = isActiveHub ? 230 : 130;
       const targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 220 : baseA));
       node.displayAlpha = lerp(node.displayAlpha, targetA, HOVER_LERP);
 
       const targetR = (isHov ? node.radius * 1.4 : node.radius) * breathe;
       node.displayRadius = lerp(node.displayRadius, targetR, HOVER_LERP);
+    }
 
+    // Update all visible nodes
+    graphNodes.forEach(node => {
+      if (node.x == null) return;
+      const isHub = node.type !== 'post';
+      const isActiveHub = isHub && node.type === modeType;
+      if (isHub && !isActiveHub) return;
+      updateNode(node);
+    });
+
+    // Layer 1: Post dots (under edges for hubs)
+    noStroke();
+    graphNodes.forEach(node => {
+      if (node.x == null || node.type !== 'post') return;
+      const c = color(node.color);
+      c.setAlpha(node.displayAlpha);
+      fill(c);
+      ellipse(node.x + node._dx, node.y + node._dy, node.displayRadius * 2, node.displayRadius * 2);
+    });
+
+    // Layer 2: Hub circles + labels (on top of everything)
+    graphNodes.forEach(node => {
+      if (node.x == null) return;
+      const isHub = node.type !== 'post';
+      const isActiveHub = isHub && node.type === modeType;
+      if (!isActiveHub) return;
+
+      const nx = node.x + node._dx;
+      const ny = node.y + node._dy;
       const c = color(node.color);
 
-      // Node body
+      // Hub body — fully opaque so edges don't show through
       c.setAlpha(node.displayAlpha);
+      noStroke();
       fill(c);
       ellipse(nx, ny, node.displayRadius * 2, node.displayRadius * 2);
 
-      // Labels for hub nodes — name above, count in center
-      if (isActiveHub && node.displayAlpha > 20) {
-        noStroke();
+      // Labels — name above, count in center
+      if (node.displayAlpha > 20) {
         textAlign(CENTER, CENTER);
 
         // Label text above the circle
-        fill(0, 0, 0, min(node.displayAlpha, isHov ? 255 : 180));
+        fill(0, 0, 0, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 180));
         textSize(max(9, node.displayRadius * 0.45));
         textStyle(NORMAL);
         text(node.label, nx, ny - node.displayRadius - 10);
 
-        // Count number in center (white, regular weight, smaller)
+        // Count number in center (white)
         fill(255, 255, 255, min(node.displayAlpha, 240));
         textSize(max(7, node.displayRadius * 0.35));
         textStyle(NORMAL);
