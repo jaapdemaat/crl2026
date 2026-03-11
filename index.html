@@ -100,6 +100,7 @@
   const DRIFT_AMOUNT = 2.5;
   const BREATHE_SPEED = 0.008;
   const BREATHE_AMOUNT = 0.08;
+  const HOVER_LERP = 0.12;
   let lastMX = 0, lastMY = 0;
   let isPanning = false;
 
@@ -130,16 +131,16 @@
 
     // Group pathways by platform so P1/P2 variants share the same colour
     const platformColors = {
-      'E&E': '#2DDBAD',   // Teal — Experience & Environment
-      'I&S': '#9A3EDB',   // Purple — Information & Systems
-      'T&M': '#DC38A9',   // Pink — Time & Movement
-      'S&I': '#8FDB30',   // Lime — Strategy & Identity
-      'N&V': '#8A446E',   // Plum — Narrative & Voice
+      'E&E': '#0EA5E9',   // Sapphire
+      'I&S': '#8B5CF6',   // Amethyst
+      'T&M': '#EC4899',   // Ruby
+      'S&I': '#10B981',   // Emerald
+      'N&V': '#F59E0B',   // Topaz
     };
-    const extraColors = { 'Core Reading': '#50375C', 'Lectures & Debates': '#3DF45D' };
+    const extraColors = { 'Core Reading': '#6B7280', 'Lectures & Debates': '#06B6D4' };
     data.allPathways.forEach(p => {
       const match = Object.keys(platformColors).find(k => p.includes(k));
-      pathwayColors[p] = match ? platformColors[match] : (extraColors[p] || '#50375C');
+      pathwayColors[p] = match ? platformColors[match] : (extraColors[p] || '#6B3FA0');
     });
     assignColors(data.allUnits, unitColors);
 
@@ -152,7 +153,7 @@
     assignColors(topTags, tagColors);
 
     buildGraph(data, posts, topTags);
-    graphNodes.forEach((n, i) => { n.noiseSeedX = i * 100; n.noiseSeedY = i * 100 + 5000; });
+    graphNodes.forEach((n, i) => { n.noiseSeedX = i * 100; n.noiseSeedY = i * 100 + 5000; n.displayAlpha = 130; n.displayRadius = n.radius; });
     setupSimulation();
 
     const postCount = graphNodes.filter(n => n.type === 'post').length;
@@ -330,18 +331,27 @@
         (tgt.id === hoveredNode.id && connectedNodeIds.has(src.id))
       );
 
+      let targetLA, targetLW;
+      let useColor = false;
       if (hoveredNode && !isHL) {
-        stroke(0, 0, 0, 8);
-        strokeWeight(0.2);
+        targetLA = 8; targetLW = 0.2;
       } else if (isHL) {
-        const c = color(tgt.color || src.color);
-        c.setAlpha(140);
-        stroke(c);
-        strokeWeight(1.2);
+        targetLA = 140; targetLW = 1.2; useColor = true;
       } else {
-        stroke(0, 0, 0, 18);
-        strokeWeight(0.3);
+        targetLA = 18; targetLW = 0.3;
       }
+      if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.3; }
+      link.displayAlpha = lerp(link.displayAlpha, targetLA, HOVER_LERP);
+      link.displayWeight = lerp(link.displayWeight, targetLW, HOVER_LERP);
+
+      if (useColor && link.displayAlpha > 20) {
+        const lc = color(tgt.color || src.color);
+        lc.setAlpha(link.displayAlpha);
+        stroke(lc);
+      } else {
+        stroke(0, 0, 0, link.displayAlpha);
+      }
+      strokeWeight(link.displayWeight);
       line(src.x + sdx, src.y + sdy, tgt.x + tdx, tgt.y + tdy);
     });
 
@@ -364,30 +374,26 @@
       const isConn = hoveredNode && connectedNodeIds.has(node.id);
       const isDim = hoveredNode && !isConn && !isHov;
 
-      let a = isDim ? 12 : (isHov ? 255 : (isConn ? 210 : 130));
-      let r = node.radius * breathe;
-      if (isHov) r *= 1.4;
+      const targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 210 : 130));
+      node.displayAlpha = lerp(node.displayAlpha, targetA, HOVER_LERP);
+
+      const targetR = (isHov ? node.radius * 1.4 : node.radius) * breathe;
+      node.displayRadius = lerp(node.displayRadius, targetR, HOVER_LERP);
 
       const c = color(node.color);
 
       // Node body
-      c.setAlpha(a);
+      c.setAlpha(node.displayAlpha);
       fill(c);
-      ellipse(nx, ny, r * 2, r * 2);
-
-      // Bright center for hubs
-      if (isActiveHub && !isDim) {
-        fill(255, 255, 255, isHov ? 140 : 45);
-        ellipse(nx, ny, r * 0.5, r * 0.5);
-      }
+      ellipse(nx, ny, node.displayRadius * 2, node.displayRadius * 2);
 
       // Labels for hub nodes
-      if (isActiveHub && !isDim) {
-        fill(0, 0, 0, isHov ? 255 : 180);
+      if (isActiveHub && node.displayAlpha > 20) {
+        fill(0, 0, 0, min(node.displayAlpha, isHov ? 255 : 180));
         noStroke();
         textAlign(CENTER, CENTER);
-        textSize(max(9, r * 0.5));
-        text(node.label, nx, ny + r + 12);
+        textSize(max(9, node.displayRadius * 0.5));
+        text(node.label, nx, ny + node.displayRadius + 12);
       }
     });
 
