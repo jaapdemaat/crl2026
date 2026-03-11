@@ -150,7 +150,12 @@
       .filter(([, c]) => c >= 4)
       .sort((a, b) => b[1] - a[1])
       .map(([t]) => t);
-    assignColors(topTags, tagColors);
+    // Tags get a greyscale palette — they represent overarching cohort interests
+    topTags.forEach((t, i) => {
+      const shade = 30 + (i % 8) * 18;   // range from #1E1E1E to #9C9C9C
+      const hex = '#' + shade.toString(16).padStart(2, '0').repeat(3);
+      tagColors[t] = hex;
+    });
 
     buildGraph(data, posts, topTags);
     graphNodes.forEach((n, i) => { n.noiseSeedX = i * 100; n.noiseSeedY = i * 100 + 5000; n.displayAlpha = 130; n.displayRadius = n.radius; });
