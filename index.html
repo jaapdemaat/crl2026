@@ -465,11 +465,35 @@
     } else {
       lines.push(node.label);
       lines.push(node.count + ' references');
+
+      // List connected post titles
+      const modeType = currentMode === 'pathways' ? 'pathway' :
+                       currentMode === 'units' ? 'unit' : 'tag';
+      const connected = graphLinks
+        .filter(l => l.type === modeType)
+        .filter(l => {
+          const sid = typeof l.source === 'object' ? l.source.id : l.source;
+          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+          return sid === node.id || tid === node.id;
+        })
+        .map(l => {
+          const sid = typeof l.source === 'object' ? l.source.id : l.source;
+          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+          const postId = sid === node.id ? tid : sid;
+          return graphNodes.find(n => n.id === postId);
+        })
+        .filter(n => n && n.type === 'post')
+        .map(n => n.label.length > 40 ? n.label.slice(0, 40) + '...' : n.label);
+
+      lines.push('');
+      const maxItems = 15;
+      connected.slice(0, maxItems).forEach(t => lines.push('· ' + t));
+      if (connected.length > maxItems) lines.push('  + ' + (connected.length - maxItems) + ' more...');
     }
 
     textAlign(LEFT, TOP);
     const pad = 10;
-    const lh = 16;
+    const lh = 14;
     let maxW = 0;
     lines.forEach((ln, i) => {
       textStyle(i === 0 ? BOLD : NORMAL);
@@ -479,17 +503,25 @@
     const bw = maxW + pad * 2;
     const bh = lines.length * lh + pad * 2;
 
-    fill(255, 255, 255, 240);
+    // Keep tooltip on screen
+    const worldRight = (windowWidth - panX) / zoomLevel;
+    const worldBottom = (windowHeight - panY) / zoomLevel;
+    let ttx = tx;
+    let tty = ty;
+    if (ttx + bw > worldRight) ttx = tx - bw - node.radius * 2 - 28;
+    if (tty + bh > worldBottom) tty = worldBottom - bh - 4;
+
+    fill(255, 255, 255, 245);
     stroke(0, 0, 0, 20);
     strokeWeight(1);
-    rect(tx, ty, bw, bh, 6);
+    rect(ttx, tty, bw, bh, 6);
 
     noStroke();
     lines.forEach((ln, i) => {
       fill(i === 0 ? 0 : 80);
       textStyle(i === 0 ? BOLD : NORMAL);
       textSize(i === 0 ? 11 : 9);
-      text(ln, tx + pad, ty + pad + i * lh);
+      text(ln, ttx + pad, tty + pad + i * lh);
     });
     textStyle(NORMAL);
   }
