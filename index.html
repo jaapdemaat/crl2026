@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCD Community Resources — Network Graph</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #ffffff;
+      color: #1a1a1a;
+      font-family: 'Roboto', sans-serif;
+      overflow: hidden;
+    }
+    #controls {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #111111;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 11px;
+      color: #888;
+      letter-spacing: 0.03em;
+    }
+    .toggle-container {
+      display: flex;
+      background: rgba(0,0,0,0.04);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(0,0,0,0.1);
+    }
+    .toggle-btn {
+      padding: 8px 16px;
+      font-family: 'Roboto', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      color: #999;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      letter-spacing: 0.02em;
+    }
+    .toggle-btn.active {
+      color: #111;
+      background: rgba(0,0,0,0.08);
+    }
+    .toggle-btn:hover:not(.active) {
+      color: #555;
+    }
+    #stats {
+      font-size: 10px;
+      color: #999;
+      letter-spacing: 0.02em;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <div>
+      <h1>GCD Community Resources</h1>
+      <div class="subtitle">What communities of practice are emerging?</div>
+    </div>
+    <div class="toggle-container">
+      <button class="toggle-btn active" id="btn-pathways" onclick="switchMode('pathways')">Pathways</button>
+      <button class="toggle-btn" id="btn-units" onclick="switchMode('units')">Units</button>
+      <button class="toggle-btn" id="btn-tags" onclick="switchMode('tags')">Tags</button>
+    </div>
+    <div id="stats"></div>
+  </div>
+
+  <script src="data_inline.js"></script>
+  <script>
+  // ─── GLOBALS ──────────────────────────────────────────────────
+  let graphNodes, graphLinks, simulation;
+  let currentMode = 'pathways';
+  let hoveredNode = null;
+  let connectedNodeIds = new Set();
+  let panX = 0, panY = 0, zoomLevel = 1;
+  let dragNode = null;
+  let noiseTime = 0;
+  const DRIFT_SPEED = 0.003;
+  const DRIFT_AMOUNT = 2.5;
+  const BREATHE_SPEED = 0.008;
+  const BREATHE_AMOUNT = 0.08;
+  let lastMX = 0, lastMY = 0;
+  let isPanning = false;
+
+  // ─── COLORS ───────────────────────────────────────────────────
+  const pathwayColors = {};
+  const unitColors = {};
+  const tagColors = {};
+
+  const palette = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+    '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+    '#F1948A', '#82E0AA', '#F8C471', '#AED6F1', '#D7BDE2',
+    '#A3E4D7', '#FAD7A0', '#A9CCE3', '#D5F5E3', '#FADBD8',
+    '#E8DAEF', '#D6EAF8', '#FCF3CF', '#D5D8DC', '#ABEBC6',
+    '#F9E79F', '#F5CBA7', '#D2B4DE', '#A9DFBF', '#AED6F1',
+  ];
+
+  function assignColors(items, colorMap) {
+    items.forEach((item, i) => { colorMap[item] = palette[i % palette.length]; });
+  }
+
+  // ─── INIT ─────────────────────────────────────────────────────
+  function initGraph() {
+    const data = DATA;
+    const posts = data.posts.filter(p =>
+      p.tags.length > 0 || p.pathways.length > 0 || p.units.length > 0
+    );
+
+    assignColors(data.allPathways, pathwayColors);
+    assignColors(data.allUnits, unitColors);
+
+    const tagCounts = {};
+    posts.forEach(p => p.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
+    const topTags = Object.entries(tagCounts)
+      .filter(([, c]) => c >= 4)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t]) => t);
+    assignColors(topTags, tagColors);
+
+    buildGraph(data, posts, topTags);
+    graphNodes.forEach((n, i) => { n.noiseSeedX = i * 100; n.noiseSeedY = i * 100 + 5000; });
+    setupSimulation();
+
+    const postCount = graphNodes.filter(n => n.type === 'post').length;
+    const tagCount = graphNodes.filter(n => n.type === 'tag').length;
+    document.getElementById('stats').textContent =
+      postCount + ' references \u2014 ' + tagCount + ' shared tags \u2014 ' +
+      data.allPathways.length + ' pathways \u2014 ' + data.allUnits.length + ' units';
+  }
+
+  // ─── GRAPH BUILDING ───────────────────────────────────────────
+  function buildGraph(data, posts, topTags) {
+    graphNodes = [];
+    graphLinks = [];
+    const pathwayNodeMap = {}, unitNodeMap = {}, tagNodeMap = {};
+
+    data.allPathways.forEach(p => {
+      const id = 'pw-' + p;
+      pathwayNodeMap[p] = id;
+      graphNodes.push({ id, label: p, type: 'pathway', radius: 18, color: pathwayColors[p], count: 0 });
+    });
+
+    data.allUnits.forEach(u => {
+      const id = 'un-' + u;
+      unitNodeMap[u] = id;
+      graphNodes.push({ id, label: u, type: 'unit', radius: 20, color: unitColors[u], count: 0 });
+    });
+
+    topTags.forEach(t => {
+      const id = 'tg-' + t;
+      tagNodeMap[t] = id;
+      graphNodes.push({ id, label: t, type: 'tag', radius: 6, color: tagColors[t], count: 0 });
+    });
+
+    posts.forEach(post => {
+      let postColor = '#444';
+      if (post.pathways.length > 0) postColor = pathwayColors[post.pathways[0]] || '#444';
+      else if (post.units.length > 0) postColor = unitColors[post.units[0]] || '#444';
+      else for (const t of post.tags) { if (tagColors[t]) { postColor = tagColors[t]; break; } }
+
+      graphNodes.push({
+        id: post.id, label: post.title, type: 'post', radius: 3,
+        tags: post.tags, pathways: post.pathways, units: post.units,
+        author: post.author, color: postColor,
+      });
+
+      post.pathways.forEach(p => {
+        if (pathwayNodeMap[p]) {
+          graphLinks.push({ source: post.id, target: pathwayNodeMap[p], type: 'pathway' });
+          const hub = graphNodes.find(n => n.id === pathwayNodeMap[p]);
+          if (hub) hub.count++;
+        }
+      });
+      post.units.forEach(u => {
+        if (unitNodeMap[u]) {
+          graphLinks.push({ source: post.id, target: unitNodeMap[u], type: 'unit' });
+          const hub = graphNodes.find(n => n.id === unitNodeMap[u]);
+          if (hub) hub.count++;
+        }
+      });
+      post.tags.forEach(t => {
+        if (tagNodeMap[t]) {
+          graphLinks.push({ source: post.id, target: tagNodeMap[t], type: 'tag' });
+          const hub = graphNodes.find(n => n.id === tagNodeMap[t]);
+          if (hub) hub.count++;
+        }
+      });
+    });
+
+    sizeNodes('tag', 5, 24);
+    sizeNodes('pathway', 14, 32);
+    sizeNodes('unit', 16, 36);
+  }
+
+  function sizeNodes(type, minR, maxR) {
+    const subset = graphNodes.filter(n => n.type === type);
+    const maxCount = Math.max(...subset.map(n => n.count), 1);
+    subset.forEach(n => { n.radius = minR + (n.count / maxCount) * (maxR - minR); });
+  }
+
+  // ─── D3 SIMULATION ───────────────────────────────────────────
+  function setupSimulation() {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+
+    simulation = d3.forceSimulation(graphNodes)
+      .force('charge', d3.forceManyBody().strength(-4))
+      .force('center', d3.forceCenter(cx, cy).strength(0.04))
+      .force('collision', d3.forceCollide().radius(d => d.radius + 1))
+      .force('link', d3.forceLink([]).id(d => d.id).distance(35).strength(0.1))
+      .force('x', d3.forceX(cx).strength(0.015))
+      .force('y', d3.forceY(cy).strength(0.015))
+      .alphaDecay(0.012)
+      .velocityDecay(0.4);
+
+    applyMode(currentMode);
+  }
+
+  function applyMode(mode) {
+    const modeType = mode === 'pathways' ? 'pathway' : mode === 'units' ? 'unit' : 'tag';
+    const active = graphLinks.filter(l => l.type === modeType);
+
+    simulation.force('link')
+      .links(active)
+      .distance(d => {
+        const s = typeof d.source === 'object' ? d.source : graphNodes.find(n => n.id === d.source);
+        const t = typeof d.target === 'object' ? d.target : graphNodes.find(n => n.id === d.target);
+        if (!s || !t) return 35;
+        return 12 + s.radius + t.radius;
+      })
+      .strength(mode === 'tags' ? 0.1 : 0.18);
+
+    simulation.force('charge').strength(d => {
+      if (mode === 'pathways') return d.type === 'pathway' ? -160 : (d.type === 'post' ? -1.5 : -8);
+      if (mode === 'units') return d.type === 'unit' ? -200 : (d.type === 'post' ? -1.5 : -8);
+      return d.type === 'tag' ? -70 : (d.type === 'post' ? -1 : -8);
+    });
+
+    simulation.force('x').strength(mode === 'tags' ? 0.008 : 0.012);
+    simulation.force('y').strength(mode === 'tags' ? 0.008 : 0.012);
+
+    simulation.alpha(0.8).restart();
+  }
+
+  function switchMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-' + mode).classList.add('active');
+    applyMode(mode);
+  }
+
+  // ─── P5.js RENDERING ─────────────────────────────────────────
+  function setup() {
+    createCanvas(windowWidth, windowHeight);
+    textFont('Roboto');
+    initGraph();
+  }
+
+  function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
+    if (simulation) {
+      simulation.force('center', d3.forceCenter(windowWidth / 2, windowHeight / 2));
+      simulation.force('x', d3.forceX(windowWidth / 2));
+      simulation.force('y', d3.forceY(windowHeight / 2));
+      simulation.alpha(0.3).restart();
+    }
+  }
+
+  function draw() {
+    background(255, 255, 255);
+    if (!graphNodes) return;
+
+    noiseTime += DRIFT_SPEED;
+
+    push();
+    translate(panX, panY);
+    scale(zoomLevel);
+
+    const modeType = currentMode === 'pathways' ? 'pathway' :
+                     currentMode === 'units' ? 'unit' : 'tag';
+    const activeLinks = graphLinks.filter(l => l.type === modeType);
+
+    // Draw edges
+    activeLinks.forEach(link => {
+      const src = typeof link.source === 'object' ? link.source : null;
+      const tgt = typeof link.target === 'object' ? link.target : null;
+      if (!src || !tgt || src.x == null || tgt.x == null) return;
+
+      const sdx = (noise(src.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const sdy = (noise(src.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const tdx = (noise(tgt.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const tdy = (noise(tgt.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+
+      const isHL = hoveredNode && (
+        (src.id === hoveredNode.id && connectedNodeIds.has(tgt.id)) ||
+        (tgt.id === hoveredNode.id && connectedNodeIds.has(src.id))
+      );
+
+      if (hoveredNode && !isHL) {
+        stroke(0, 0, 0, 8);
+        strokeWeight(0.2);
+      } else if (isHL) {
+        const c = color(tgt.color || src.color);
+        c.setAlpha(140);
+        stroke(c);
+        strokeWeight(1.2);
+      } else {
+        stroke(0, 0, 0, 18);
+        strokeWeight(0.3);
+      }
+      line(src.x + sdx, src.y + sdy, tgt.x + tdx, tgt.y + tdy);
+    });
+
+    // Draw nodes
+    noStroke();
+    graphNodes.forEach(node => {
+      if (node.x == null) return;
+
+      const isHub = node.type !== 'post';
+      const isActiveHub = isHub && node.type === modeType;
+      if (isHub && !isActiveHub) return;
+
+      const dx = (noise(node.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const dy = (noise(node.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const breathe = 1 + sin(noiseTime / DRIFT_SPEED * BREATHE_SPEED + node.noiseSeedX) * BREATHE_AMOUNT;
+      const nx = node.x + dx;
+      const ny = node.y + dy;
+
+      const isHov = hoveredNode && hoveredNode.id === node.id;
+      const isConn = hoveredNode && connectedNodeIds.has(node.id);
+      const isDim = hoveredNode && !isConn && !isHov;
+
+      let a = isDim ? 12 : (isHov ? 255 : (isConn ? 210 : 130));
+      let r = node.radius * breathe;
+      if (isHov) r *= 1.4;
+
+      const c = color(node.color);
+
+      // Node body
+      c.setAlpha(a);
+      fill(c);
+      ellipse(nx, ny, r * 2, r * 2);
+
+      // Bright center for hubs
+      if (isActiveHub && !isDim) {
+        fill(255, 255, 255, isHov ? 140 : 45);
+        ellipse(nx, ny, r * 0.5, r * 0.5);
+      }
+
+      // Labels for hub nodes
+      if (isActiveHub && !isDim) {
+        fill(0, 0, 0, isHov ? 255 : 180);
+        noStroke();
+        textAlign(CENTER, CENTER);
+        textSize(max(9, r * 0.5));
+        text(node.label, nx, ny + r + 12);
+      }
+    });
+
+    // Tooltip
+    if (hoveredNode) drawTooltip(hoveredNode);
+
+    pop();
+  }
+
+  function drawTooltip(node) {
+    const tx = node.x + node.radius + 14;
+    const ty = node.y - 12;
+
+    const lines = [];
+    if (node.type === 'post') {
+      lines.push(node.label.length > 55 ? node.label.slice(0, 55) + '...' : node.label);
+      if (node.tags.length) {
+        const t = node.tags.slice(0, 6).join(', ');
+        lines.push('Tags: ' + t + (node.tags.length > 6 ? '...' : ''));
+      }
+      if (node.pathways.length) lines.push('Pathways: ' + node.pathways.join(', '));
+      if (node.units.length) lines.push('Units: ' + node.units.join(', '));
+    } else {
+      lines.push(node.label);
+      lines.push(node.count + ' references');
+    }
+
+    textSize(11);
+    textAlign(LEFT, TOP);
+    const maxW = max(...lines.map(l => textWidth(l)));
+    const pad = 10;
+    const lh = 16;
+    const bw = maxW + pad * 2;
+    const bh = lines.length * lh + pad * 2;
+
+    fill(255, 255, 255, 240);
+    stroke(0, 0, 0, 20);
+    strokeWeight(1);
+    rect(tx, ty, bw, bh, 6);
+
+    noStroke();
+    lines.forEach((ln, i) => {
+      fill(i === 0 ? 0 : 80);
+      textStyle(i === 0 ? BOLD : NORMAL);
+      textSize(i === 0 ? 12 : 10);
+      text(ln, tx + pad, ty + pad + i * lh);
+    });
+    textStyle(NORMAL);
+  }
+
+  // ─── INTERACTION ──────────────────────────────────────────────
+  function screenToWorld(sx, sy) {
+    return { x: (sx - panX) / zoomLevel, y: (sy - panY) / zoomLevel };
+  }
+
+  function findNodeAt(wx, wy) {
+    let closest = null, best = Infinity;
+    const modeType = currentMode === 'pathways' ? 'pathway' :
+                     currentMode === 'units' ? 'unit' : 'tag';
+    for (const n of graphNodes) {
+      if (n.x == null) continue;
+      if (n.type !== 'post' && n.type !== modeType) continue;
+      const d = dist(wx, wy, n.x, n.y);
+      const hr = max(n.radius, 6);
+      if (d < hr && d < best) { closest = n; best = d; }
+    }
+    return closest;
+  }
+
+  function mouseMoved() {
+    if (!graphNodes) return;
+    const w = screenToWorld(mouseX, mouseY);
+    hoveredNode = findNodeAt(w.x, w.y);
+
+    connectedNodeIds.clear();
+    if (hoveredNode) {
+      connectedNodeIds.add(hoveredNode.id);
+      const modeType = currentMode === 'pathways' ? 'pathway' :
+                       currentMode === 'units' ? 'unit' : 'tag';
+      graphLinks.filter(l => l.type === modeType).forEach(l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        if (sid === hoveredNode.id) connectedNodeIds.add(tid);
+        if (tid === hoveredNode.id) connectedNodeIds.add(sid);
+      });
+    }
+    cursor(hoveredNode ? 'pointer' : 'default');
+  }
+
+  function mousePressed() {
+    if (!graphNodes) return;
+    const w = screenToWorld(mouseX, mouseY);
+    dragNode = findNodeAt(w.x, w.y);
+    if (dragNode) {
+      dragNode.fx = dragNode.x;
+      dragNode.fy = dragNode.y;
+      simulation.alphaTarget(0.1).restart();
+    } else {
+      isPanning = true;
+    }
+    lastMX = mouseX; lastMY = mouseY;
+  }
+
+  function mouseDragged() {
+    if (dragNode) {
+      const w = screenToWorld(mouseX, mouseY);
+      dragNode.fx = w.x;
+      dragNode.fy = w.y;
+    } else if (isPanning) {
+      panX += mouseX - lastMX;
+      panY += mouseY - lastMY;
+    }
+    lastMX = mouseX; lastMY = mouseY;
+  }
+
+  function mouseReleased() {
+    if (dragNode) {
+      dragNode.fx = null;
+      dragNode.fy = null;
+      simulation.alphaTarget(0);
+    }
+    dragNode = null;
+    isPanning = false;
+  }
+
+  function mouseWheel(event) {
+    const w = screenToWorld(mouseX, mouseY);
+    const factor = event.delta > 0 ? 0.93 : 1.07;
+    const nz = constrain(zoomLevel * factor, 0.15, 5);
+    panX = mouseX - w.x * nz;
+    panY = mouseY - w.y * nz;
+    zoomLevel = nz;
+    return false;
+  }
+  </script>
+</body>
+</html>
