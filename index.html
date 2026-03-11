@@ -289,7 +289,7 @@
       .force('link', d3.forceLink([]).id(d => d.id).distance(35).strength(0.1))
       .force('x', d3.forceX(cx).strength(0.015))
       .force('y', d3.forceY(cy).strength(0.015))
-      .force('cursor', forceCursorGravity(0.08))
+      .force('cursor', forceCursorGravity(0.06))
       .alphaDecay(0.012)
       .velocityDecay(0.4);
 
