@@ -838,6 +838,8 @@
         + '+ ' + rest.length + ' more...</div>';
     }
     el.innerHTML = html;
+    // Hide legend in Tags mode — that view is about free exploration
+    el.style.display = (currentMode === 'tags') ? 'none' : 'flex';
   }
   function toggleLegendMore(btn) {
     const more = document.getElementById('legend-more');
