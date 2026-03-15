@@ -580,9 +580,11 @@
       const ny = node.y + node._dy;
       const c = color(node.color);
 
-      // Hub body — fully opaque so edges don't show through
-      c.setAlpha(node.displayAlpha);
+      // Hub body — opaque white base so edges never show through
       noStroke();
+      fill(255);
+      ellipse(nx, ny, node.displayRadius * 2, node.displayRadius * 2);
+      c.setAlpha(node.displayAlpha);
       fill(c);
       ellipse(nx, ny, node.displayRadius * 2, node.displayRadius * 2);
 
