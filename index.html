@@ -117,8 +117,9 @@
       border: 1px solid rgba(0,0,0,0.08);
       border-radius: 8px;
       padding: 10px 14px;
-      max-height: 50vh;
+      max-height: 40vh;
       overflow-y: auto;
+      overscroll-behavior: contain;
     }
     .legend-title {
       font-size: 9px;
@@ -258,6 +259,11 @@
       postCount + ' references \u2014 ' + tagCount + ' shared tags \u2014 ' +
       data.allUnits.length + ' units';
     buildLegend();
+
+    // Prevent legend scroll from zooming the canvas
+    document.getElementById('legend').addEventListener('wheel', function(e) {
+      e.stopPropagation();
+    });
   }
 
   // ─── GRAPH BUILDING ───────────────────────────────────────────
@@ -809,14 +815,39 @@
     const title = currentMode === 'pathways' ? 'GCD Platforms' :
                   currentMode === 'units' ? 'Units' : 'Tags';
 
+    const MAX_VISIBLE = 15;
     let html = '<div class="legend-title">' + title + '</div>';
-    hubs.forEach(h => {
+    const visible = hubs.slice(0, MAX_VISIBLE);
+    const rest = hubs.slice(MAX_VISIBLE);
+    visible.forEach(h => {
       html += '<div class="legend-item">'
         + '<span class="legend-dot" style="background:' + h.color + '"></span>'
         + '<span>' + h.label + ' (' + h.count + ')</span>'
         + '</div>';
     });
+    if (rest.length > 0) {
+      html += '<div id="legend-more" style="display:none">';
+      rest.forEach(h => {
+        html += '<div class="legend-item">'
+          + '<span class="legend-dot" style="background:' + h.color + '"></span>'
+          + '<span>' + h.label + ' (' + h.count + ')</span>'
+          + '</div>';
+      });
+      html += '</div>';
+      html += '<div class="legend-item" style="cursor:pointer;color:#999;font-size:9px" onclick="toggleLegendMore(this)">'
+        + '+ ' + rest.length + ' more...</div>';
+    }
     el.innerHTML = html;
+  }
+  function toggleLegendMore(btn) {
+    const more = document.getElementById('legend-more');
+    if (more.style.display === 'none') {
+      more.style.display = 'block';
+      btn.textContent = '− show less';
+    } else {
+      more.style.display = 'none';
+      btn.textContent = '+ ' + more.children.length + ' more...';
+    }
   }
   </script>
 </body>
