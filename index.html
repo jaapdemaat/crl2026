@@ -600,13 +600,13 @@
         const labelY = ny - node.displayRadius - 8 - (labelLines.length - 1) * lh;
         labelLines.forEach((ln, li) => text(ln, nx, labelY + li * lh));
 
-        // Period indicator above platform name
+        // Project indicator above platform name
         if (node.period) {
           textStyle(NORMAL);
           const periodSize = max(8, labelSize * 0.7);
           textSize(periodSize);
           fill(0, 0, 0, min(node.displayAlpha * 0.5, 120));
-          text('Period ' + node.period, nx, labelY - periodSize * 1.3);
+          text('Project ' + node.period, nx, labelY - periodSize * 1.3);
         }
 
         // Count number in center (white) — use BASELINE alignment
@@ -645,7 +645,7 @@
       // Show full name + period context for platform hubs
       const fullName = (platformFullNames[node.platformCode] || node.label).replace('\n', ' ');
       lines.push(fullName);
-      if (node.period) lines.push('Period ' + node.period + ' (Unit ' + (node.period === 1 ? '4' : '6') + ')');
+      if (node.period) lines.push('Project ' + node.period + ' (Unit ' + (node.period === 1 ? '4' : '6') + ')');
       lines.push(node.count + ' references');
 
       // List connected post titles
@@ -803,6 +803,14 @@
     return false;
   }
 
+  // Prevent browser-level zoom (pinch, Ctrl+scroll) from interfering
+  document.addEventListener('wheel', function(e) {
+    if (e.ctrlKey) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+  document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
+  document.addEventListener('gestureend', function(e) { e.preventDefault(); });
+
   function keyPressed() {
     if (key === '=' || key === '+') {
       zoomAt(windowWidth / 2, windowHeight / 2, 1.15);
@@ -885,7 +893,7 @@
           + '</div>';
         group.forEach(h => {
           html += '<div class="legend-item" style="padding-left:17px;font-size:9px;color:#888">'
-            + '<span>Period ' + h.period + ': ' + h.count + ' refs</span>'
+            + '<span>Project ' + h.period + ': ' + h.count + ' refs</span>'
             + '</div>';
         });
       });
