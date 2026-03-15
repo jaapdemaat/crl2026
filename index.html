@@ -70,6 +70,77 @@
       color: #999;
       letter-spacing: 0.02em;
     }
+    .hint {
+      font-size: 9px;
+      color: #bbb;
+      letter-spacing: 0.02em;
+      margin-top: 2px;
+    }
+    #search-container {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #search {
+      padding: 6px 10px;
+      font-family: 'Roboto', sans-serif;
+      font-size: 11px;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 6px;
+      outline: none;
+      background: rgba(255,255,255,0.9);
+      color: #333;
+      width: 180px;
+    }
+    #search:focus { border-color: rgba(0,0,0,0.3); }
+    #search::placeholder { color: #bbb; }
+    #search-clear {
+      font-size: 14px;
+      color: #999;
+      cursor: pointer;
+      display: none;
+      background: none;
+      border: none;
+      padding: 0 4px;
+      font-family: 'Roboto', sans-serif;
+    }
+    #search-clear:hover { color: #333; }
+    #legend {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      padding: 10px 14px;
+      max-height: 50vh;
+      overflow-y: auto;
+    }
+    .legend-title {
+      font-size: 9px;
+      font-weight: 600;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10px;
+      color: #555;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
     canvas { display: block; }
   </style>
 </head>
@@ -84,8 +155,14 @@
       <button class="toggle-btn" id="btn-units" onclick="switchMode('units')">Units</button>
       <button class="toggle-btn" id="btn-tags" onclick="switchMode('tags')">Tags</button>
     </div>
+    <div id="search-container">
+      <input type="text" id="search" placeholder="Search posts, tags..." oninput="onSearch(this.value)" />
+      <button id="search-clear" onclick="clearSearch()">&times;</button>
+    </div>
     <div id="stats"></div>
+    <div class="hint">Hover to explore connections · Scroll to zoom</div>
   </div>
+  <div id="legend"></div>
 
   <script src="data_inline.js"></script>
   <script>
@@ -107,6 +184,8 @@
   let lastMX = 0, lastMY = 0;
   let isPanning = false;
   let mouseWorldX = 0, mouseWorldY = 0;
+  let searchQuery = '';
+  let searchMatchIds = new Set();
 
   // Frame-rate independent lerp — keeps animations consistent
   // even when FPS drops (e.g. dense Tags view)
@@ -178,6 +257,7 @@
     document.getElementById('stats').textContent =
       postCount + ' references \u2014 ' + tagCount + ' shared tags \u2014 ' +
       data.allUnits.length + ' units';
+    buildLegend();
   }
 
   // ─── GRAPH BUILDING ───────────────────────────────────────────
@@ -217,7 +297,7 @@
       else if (post.units.length > 0) postColor = unitColors[post.units[0]] || '#AAAAAA';
 
       graphNodes.push({
-        id: post.id, label: post.title, type: 'post', radius: 3,
+        id: post.id, label: post.title, type: 'post', radius: 5,
         tags: post.tags, pathways: post.pathways, units: post.units,
         author: post.author, color: postColor,
       });
@@ -308,7 +388,7 @@
         if (!s || !t) return 35;
         return 12 + s.radius + t.radius;
       })
-      .strength(mode === 'tags' ? 0.1 : 0.18);
+      .strength(mode === 'tags' ? 0.15 : 0.25);
 
     simulation.force('charge').strength(d => {
       if (mode === 'pathways') return d.type === 'pathway' ? -250 : (d.type === 'post' ? -1.5 : -8);
@@ -327,6 +407,7 @@
     document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('btn-' + mode).classList.add('active');
     applyMode(mode);
+    buildLegend();
   }
 
   // ─── P5.js RENDERING ─────────────────────────────────────────
@@ -388,9 +469,17 @@
       } else if (isHL) {
         targetLA = 140; targetLW = 1.2; useColor = true;
       } else {
-        targetLA = 18; targetLW = 0.3;
+        targetLA = 30; targetLW = 0.5;
       }
-      if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.3; }
+      // Dim links whose endpoints don't match search
+      if (searchQuery) {
+        const sid = typeof src === 'object' ? src.id : null;
+        const tid = typeof tgt === 'object' ? tgt.id : null;
+        if (!searchMatchIds.has(sid) && !searchMatchIds.has(tid)) {
+          targetLA = min(targetLA, 6); targetLW = min(targetLW, 0.2);
+        }
+      }
+      if (link.displayAlpha == null) { link.displayAlpha = 30; link.displayWeight = 0.5; }
       link.displayAlpha = smoothLerp(link.displayAlpha, targetLA, HOVER_LERP);
       link.displayWeight = smoothLerp(link.displayWeight, targetLW, HOVER_LERP);
 
@@ -417,9 +506,12 @@
       const isHov = hoveredNode && hoveredNode.id === node.id;
       const isConn = hoveredNode && connectedNodeIds.has(node.id);
       const isDim = hoveredNode && !isConn && !isHov;
+      const isSearchDim = searchQuery && !searchMatchIds.has(node.id);
 
       const baseA = isActiveHub ? 255 : 130;
-      const targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 220 : baseA));
+      let targetA = isDim ? 12 : (isHov ? 255 : (isConn ? 220 : baseA));
+      if (isSearchDim) targetA = min(targetA, 15);
+      else if (searchQuery && searchMatchIds.has(node.id)) targetA = max(targetA, 240);
       node.displayAlpha = smoothLerp(node.displayAlpha, targetA, HOVER_LERP);
 
       const targetR = (isHov ? node.radius * 1.4 : node.radius) * breathe;
@@ -467,10 +559,10 @@
         textAlign(CENTER, CENTER);
 
         // Label text above the circle
-        fill(0, 0, 0, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 180));
-        const labelSize = max(9, node.displayRadius * 0.45);
+        fill(0, 0, 0, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 200));
+        const labelSize = max(10, node.displayRadius * 0.55);
         textSize(labelSize);
-        textStyle(NORMAL);
+        textStyle(BOLD);
         text(node.label, nx, ny - node.displayRadius - 10);
 
         // Count number in center (white) — use BASELINE alignment
@@ -671,6 +763,60 @@
     } else if (key === '-' || key === '_') {
       zoomAt(windowWidth / 2, windowHeight / 2, 0.85);
     }
+  }
+
+  // ─── SEARCH ───────────────────────────────────────────────────
+  function onSearch(val) {
+    searchQuery = val.trim().toLowerCase();
+    document.getElementById('search-clear').style.display = searchQuery ? 'block' : 'none';
+    searchMatchIds.clear();
+    if (!searchQuery || !graphNodes) return;
+
+    const modeType = currentMode === 'pathways' ? 'pathway' :
+                     currentMode === 'units' ? 'unit' : 'tag';
+
+    graphNodes.forEach(n => {
+      const text = (n.label || '').toLowerCase();
+      const tags = (n.tags || []).join(' ').toLowerCase();
+      const author = (n.author || '').toLowerCase();
+      if (text.includes(searchQuery) || tags.includes(searchQuery) || author.includes(searchQuery)) {
+        searchMatchIds.add(n.id);
+        // Also highlight connected hubs / posts
+        graphLinks.filter(l => l.type === modeType).forEach(l => {
+          const sid = typeof l.source === 'object' ? l.source.id : l.source;
+          const tid = typeof l.target === 'object' ? l.target.id : l.target;
+          if (sid === n.id) searchMatchIds.add(tid);
+          if (tid === n.id) searchMatchIds.add(sid);
+        });
+      }
+    });
+  }
+
+  function clearSearch() {
+    document.getElementById('search').value = '';
+    onSearch('');
+  }
+
+  // ─── LEGEND ───────────────────────────────────────────────────
+  function buildLegend() {
+    const el = document.getElementById('legend');
+    const modeType = currentMode === 'pathways' ? 'pathway' :
+                     currentMode === 'units' ? 'unit' : 'tag';
+    const hubs = graphNodes
+      .filter(n => n.type === modeType)
+      .sort((a, b) => b.count - a.count);
+
+    const title = currentMode === 'pathways' ? 'GCD Platforms' :
+                  currentMode === 'units' ? 'Units' : 'Tags';
+
+    let html = '<div class="legend-title">' + title + '</div>';
+    hubs.forEach(h => {
+      html += '<div class="legend-item">'
+        + '<span class="legend-dot" style="background:' + h.color + '"></span>'
+        + '<span>' + h.label + ' (' + h.count + ')</span>'
+        + '</div>';
+    });
+    el.innerHTML = html;
   }
   </script>
 </body>
