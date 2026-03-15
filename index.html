@@ -559,14 +559,19 @@
       updateNode(node);
     });
 
-    // Layer 1: Post dots (under edges for hubs)
+    // Layer 1: Post dots — white base + colored fill so edges don't bleed through
     noStroke();
     graphNodes.forEach(node => {
       if (node.x == null || node.type !== 'post') return;
+      const px = node.x + node._dx;
+      const py = node.y + node._dy;
+      const d = node.displayRadius * 2;
+      fill(255);
+      ellipse(px, py, d, d);
       const c = color(node.color);
       c.setAlpha(node.displayAlpha);
       fill(c);
-      ellipse(node.x + node._dx, node.y + node._dy, node.displayRadius * 2, node.displayRadius * 2);
+      ellipse(px, py, d, d);
     });
 
     // Layer 2: Hub circles + labels (on top of everything)
