@@ -196,6 +196,20 @@
     return current + (target - current) * t;
   }
 
+  // ─── PLATFORM FULL NAMES ──────────────────────────────────────
+  const platformFullNames = {
+    'E&E': 'Experience &\nEnvironment',
+    'I&S': 'Information &\nSystems',
+    'T&M': 'Time &\nMovement',
+    'S&I': 'Strategy &\nIdentity',
+    'N&V': 'Narrative &\nVoice',
+  };
+
+  // Normalise pathway keys: "P1T&M" → "P1-T&M", "P2E&E" → "P2-E&E"
+  function normalisePathway(name) {
+    return name.replace(/^(P[12])([A-Z])/, '$1-$2');
+  }
+
   // ─── COLORS ───────────────────────────────────────────────────
   const pathwayColors = {};
   const unitColors = {};
@@ -217,6 +231,11 @@
   // ─── INIT ─────────────────────────────────────────────────────
   function initGraph() {
     const data = DATA;
+
+    // Normalise pathway keys across all data
+    data.allPathways = [...new Set(data.allPathways.map(normalisePathway))];
+    data.posts.forEach(p => { p.pathways = [...new Set(p.pathways.map(normalisePathway))]; });
+
     const posts = data.posts.filter(p =>
       p.tags.length > 0 || p.pathways.length > 0 || p.units.length > 0
     );
@@ -272,16 +291,23 @@
     graphLinks = [];
     const pathwayNodeMap = {}, unitNodeMap = {}, tagNodeMap = {};
 
-    // Format pathway labels: "P2-T&M" → "U6 T&M #2"
+    // Format pathway labels with full names
+    // "P1-E&E" → "Experience &\nEnvironment" (period shown in tooltip)
+    // "P2-T&M" → "Time &\nMovement"
     function fmtPathway(name) {
-      const m = name.match(/^P([12])-?(.+)$/);
-      return m ? ('U6 ' + m[2] + ' #' + m[1]) : name;
+      const m = name.match(/^P([12])-(.+)$/);
+      if (!m) return name;
+      const full = platformFullNames[m[2]];
+      return full || m[2];
     }
 
     data.allPathways.forEach(p => {
       const id = 'pw-' + p;
       pathwayNodeMap[p] = id;
-      graphNodes.push({ id, label: fmtPathway(p), type: 'pathway', radius: 18, color: pathwayColors[p], count: 0 });
+      const m = p.match(/^P([12])-(.+)$/);
+      const period = m ? parseInt(m[1]) : 0;
+      const platformCode = m ? m[2] : p;
+      graphNodes.push({ id, label: fmtPathway(p), type: 'pathway', radius: 18, color: pathwayColors[p], count: 0, period, platformCode, rawName: p });
     });
 
     data.allUnits.forEach(u => {
@@ -569,7 +595,19 @@
         const labelSize = max(10, node.displayRadius * 0.55);
         textSize(labelSize);
         textStyle(BOLD);
-        text(node.label, nx, ny - node.displayRadius - 10);
+        const labelLines = node.label.split('\n');
+        const lh = labelSize * 1.2;
+        const labelY = ny - node.displayRadius - 8 - (labelLines.length - 1) * lh;
+        labelLines.forEach((ln, li) => text(ln, nx, labelY + li * lh));
+
+        // Period indicator above platform name
+        if (node.period) {
+          textStyle(NORMAL);
+          const periodSize = max(8, labelSize * 0.7);
+          textSize(periodSize);
+          fill(0, 0, 0, min(node.displayAlpha * 0.5, 120));
+          text('Period ' + node.period, nx, labelY - periodSize * 1.3);
+        }
 
         // Count number in center (white) — use BASELINE alignment
         // and manually center using ascent, since digits have no descenders
@@ -604,8 +642,10 @@
       if (node.pathways.length) lines.push('Pathways: ' + node.pathways.join(', '));
       if (node.units.length) lines.push('Units: ' + node.units.join(', '));
     } else {
-      // Split multi-line labels into separate tooltip lines
-      node.label.split('\n').forEach(part => lines.push(part));
+      // Show full name + period context for platform hubs
+      const fullName = (platformFullNames[node.platformCode] || node.label).replace('\n', ' ');
+      lines.push(fullName);
+      if (node.period) lines.push('Period ' + node.period + ' (Unit ' + (node.period === 1 ? '4' : '6') + ')');
       lines.push(node.count + ' references');
 
       // List connected post titles
@@ -808,47 +848,69 @@
     const el = document.getElementById('legend');
     const modeType = currentMode === 'pathways' ? 'pathway' :
                      currentMode === 'units' ? 'unit' : 'tag';
-    const hubs = graphNodes
-      .filter(n => n.type === modeType)
-      .sort((a, b) => b.count - a.count);
 
-    const title = currentMode === 'pathways' ? 'GCD Platforms' :
-                  currentMode === 'units' ? 'Units' : 'Tags';
+    // Hide legend in Tags mode — that view is about free exploration
+    if (currentMode === 'tags') { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
 
-    const MAX_VISIBLE = 15;
-    let html = '<div class="legend-title">' + title + '</div>';
-    const visible = hubs.slice(0, MAX_VISIBLE);
-    const rest = hubs.slice(MAX_VISIBLE);
-    visible.forEach(h => {
-      html += '<div class="legend-item">'
-        + '<span class="legend-dot" style="background:' + h.color + '"></span>'
-        + '<span>' + h.label + ' (' + h.count + ')</span>'
-        + '</div>';
-    });
-    if (rest.length > 0) {
-      html += '<div id="legend-more" style="display:none">';
-      rest.forEach(h => {
+    if (currentMode === 'pathways') {
+      // Group platforms by code, show periods inline
+      const hubs = graphNodes.filter(n => n.type === 'pathway');
+      const platforms = {}; // { code: [hub1, hub2] }
+      const shared = [];    // Core Reading, Lectures & Debates
+      hubs.forEach(h => {
+        if (h.period) {
+          if (!platforms[h.platformCode]) platforms[h.platformCode] = [];
+          platforms[h.platformCode].push(h);
+        } else {
+          shared.push(h);
+        }
+      });
+
+      // Sort platforms by total count
+      const sortedCodes = Object.keys(platforms).sort((a, b) => {
+        const sumA = platforms[a].reduce((s, h) => s + h.count, 0);
+        const sumB = platforms[b].reduce((s, h) => s + h.count, 0);
+        return sumB - sumA;
+      });
+
+      let html = '<div class="legend-title">GCD Platforms</div>';
+      sortedCodes.forEach(code => {
+        const group = platforms[code].sort((a, b) => a.period - b.period);
+        const fullName = (platformFullNames[code] || code).replace('\n', ' ');
+        const total = group.reduce((s, h) => s + h.count, 0);
+        html += '<div class="legend-item" style="margin-top:3px">'
+          + '<span class="legend-dot" style="background:' + group[0].color + '"></span>'
+          + '<span style="font-weight:500">' + fullName + '</span>'
+          + '</div>';
+        group.forEach(h => {
+          html += '<div class="legend-item" style="padding-left:17px;font-size:9px;color:#888">'
+            + '<span>Period ' + h.period + ': ' + h.count + ' refs</span>'
+            + '</div>';
+        });
+      });
+
+      if (shared.length > 0) {
+        html += '<div class="legend-title" style="margin-top:8px">Shared</div>';
+        shared.sort((a, b) => b.count - a.count).forEach(h => {
+          html += '<div class="legend-item">'
+            + '<span class="legend-dot" style="background:' + h.color + '"></span>'
+            + '<span>' + h.label + ' (' + h.count + ')</span>'
+            + '</div>';
+        });
+      }
+      el.innerHTML = html;
+    } else {
+      // Units — simple list
+      const hubs = graphNodes.filter(n => n.type === modeType).sort((a, b) => b.count - a.count);
+      let html = '<div class="legend-title">Units</div>';
+      hubs.forEach(h => {
         html += '<div class="legend-item">'
           + '<span class="legend-dot" style="background:' + h.color + '"></span>'
           + '<span>' + h.label + ' (' + h.count + ')</span>'
           + '</div>';
       });
-      html += '</div>';
-      html += '<div class="legend-item" style="cursor:pointer;color:#999;font-size:9px" onclick="toggleLegendMore(this)">'
-        + '+ ' + rest.length + ' more...</div>';
-    }
-    el.innerHTML = html;
-    // Hide legend in Tags mode — that view is about free exploration
-    el.style.display = (currentMode === 'tags') ? 'none' : 'flex';
-  }
-  function toggleLegendMore(btn) {
-    const more = document.getElementById('legend-more');
-    if (more.style.display === 'none') {
-      more.style.display = 'block';
-      btn.textContent = '− show less';
-    } else {
-      more.style.display = 'none';
-      btn.textContent = '+ ' + more.children.length + ' more...';
+      el.innerHTML = html;
     }
   }
   </script>
