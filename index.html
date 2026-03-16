@@ -478,54 +478,6 @@
                      currentMode === 'units' ? 'unit' : 'tag';
     const activeLinks = graphLinks.filter(l => l.type === modeType);
 
-    // Draw edges
-    activeLinks.forEach(link => {
-      const src = typeof link.source === 'object' ? link.source : null;
-      const tgt = typeof link.target === 'object' ? link.target : null;
-      if (!src || !tgt || src.x == null || tgt.x == null) return;
-
-      const sdx = (noise(src.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
-      const sdy = (noise(src.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
-      const tdx = (noise(tgt.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
-      const tdy = (noise(tgt.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
-
-      const isHL = hoveredNode && (
-        (src.id === hoveredNode.id && connectedNodeIds.has(tgt.id)) ||
-        (tgt.id === hoveredNode.id && connectedNodeIds.has(src.id))
-      );
-
-      let targetLA, targetLW;
-      let useColor = false;
-      if (hoveredNode && !isHL) {
-        targetLA = 8; targetLW = 0.2;
-      } else if (isHL) {
-        targetLA = 140; targetLW = 1.2; useColor = true;
-      } else {
-        targetLA = 30; targetLW = 0.5;
-      }
-      // Dim links whose endpoints don't match search
-      if (searchQuery) {
-        const sid = typeof src === 'object' ? src.id : null;
-        const tid = typeof tgt === 'object' ? tgt.id : null;
-        if (!searchMatchIds.has(sid) && !searchMatchIds.has(tid)) {
-          targetLA = min(targetLA, 6); targetLW = min(targetLW, 0.2);
-        }
-      }
-      if (link.displayAlpha == null) { link.displayAlpha = 30; link.displayWeight = 0.5; }
-      link.displayAlpha = smoothLerp(link.displayAlpha, targetLA, HOVER_LERP);
-      link.displayWeight = smoothLerp(link.displayWeight, targetLW, HOVER_LERP);
-
-      if (useColor && link.displayAlpha > 20) {
-        const lc = color(tgt.color || src.color);
-        lc.setAlpha(link.displayAlpha);
-        stroke(lc);
-      } else {
-        stroke(0, 0, 0, link.displayAlpha);
-      }
-      strokeWeight(link.displayWeight);
-      line(src.x + sdx, src.y + sdy, tgt.x + tdx, tgt.y + tdy);
-    });
-
     // Helper: update node display state
     function updateNode(node) {
       const isHub = node.type !== 'post';
@@ -559,7 +511,7 @@
       updateNode(node);
     });
 
-    // Layer 1: Post dots — white base + colored fill so edges don't bleed through
+    // Layer 1: Post dots — white base + colored fill (drawn first, below edges)
     noStroke();
     graphNodes.forEach(node => {
       if (node.x == null || node.type !== 'post') return;
@@ -574,7 +526,55 @@
       ellipse(px, py, d, d);
     });
 
-    // Layer 2: Hub circles + labels (on top of everything)
+    // Layer 2: Edges (between post dots and hub circles)
+    activeLinks.forEach(link => {
+      const src = typeof link.source === 'object' ? link.source : null;
+      const tgt = typeof link.target === 'object' ? link.target : null;
+      if (!src || !tgt || src.x == null || tgt.x == null) return;
+
+      const sdx = (noise(src.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const sdy = (noise(src.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const tdx = (noise(tgt.noiseSeedX + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+      const tdy = (noise(tgt.noiseSeedY + noiseTime) - 0.5) * DRIFT_AMOUNT * 2;
+
+      const isHL = hoveredNode && (
+        (src.id === hoveredNode.id && connectedNodeIds.has(tgt.id)) ||
+        (tgt.id === hoveredNode.id && connectedNodeIds.has(src.id))
+      );
+
+      let targetLA, targetLW;
+      let useColor = false;
+      if (hoveredNode && !isHL) {
+        targetLA = 8; targetLW = 0.2;
+      } else if (isHL) {
+        targetLA = 140; targetLW = 1.2; useColor = true;
+      } else {
+        targetLA = 18; targetLW = 0.4;
+      }
+      // Dim links whose endpoints don't match search
+      if (searchQuery) {
+        const sid = typeof src === 'object' ? src.id : null;
+        const tid = typeof tgt === 'object' ? tgt.id : null;
+        if (!searchMatchIds.has(sid) && !searchMatchIds.has(tid)) {
+          targetLA = min(targetLA, 6); targetLW = min(targetLW, 0.2);
+        }
+      }
+      if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.4; }
+      link.displayAlpha = smoothLerp(link.displayAlpha, targetLA, HOVER_LERP);
+      link.displayWeight = smoothLerp(link.displayWeight, targetLW, HOVER_LERP);
+
+      if (useColor && link.displayAlpha > 20) {
+        const lc = color(tgt.color || src.color);
+        lc.setAlpha(link.displayAlpha);
+        stroke(lc);
+      } else {
+        stroke(0, 0, 0, link.displayAlpha);
+      }
+      strokeWeight(link.displayWeight);
+      line(src.x + sdx, src.y + sdy, tgt.x + tdx, tgt.y + tdy);
+    });
+
+    // Layer 3: Hub circles + labels (on top of everything)
     graphNodes.forEach(node => {
       if (node.x == null) return;
       const isHub = node.type !== 'post';
@@ -646,7 +646,17 @@
         const t = node.tags.slice(0, 6).join(', ');
         lines.push('Tags: ' + t + (node.tags.length > 6 ? '...' : ''));
       }
-      if (node.pathways.length) lines.push('Pathways: ' + node.pathways.join(', '));
+      if (node.pathways.length) {
+        const pNames = node.pathways.map(p => {
+          const m = p.match(/^P([12])-(.+)$/);
+          if (m) {
+            const full = (platformFullNames[m[2]] || m[2]).replace('\n', ' ');
+            return full + ' (Project ' + m[1] + ')';
+          }
+          return p;
+        });
+        lines.push('Platform: ' + pNames.join(', '));
+      }
       if (node.units.length) lines.push('Units: ' + node.units.join(', '));
     } else {
       // Show full name + period context for platform hubs
