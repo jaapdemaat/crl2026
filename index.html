@@ -810,13 +810,20 @@
     return false;
   }
 
-  // Prevent browser-level zoom (pinch, Ctrl+scroll) from interfering
+  // Prevent ALL browser-level zoom (pinch, Ctrl+scroll, trackpad) from interfering
+  // Block every wheel event on the page so only p5's mouseWheel handles zoom
   document.addEventListener('wheel', function(e) {
-    if (e.ctrlKey) e.preventDefault();
+    e.preventDefault();
   }, { passive: false });
-  document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
-  document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
-  document.addEventListener('gestureend', function(e) { e.preventDefault(); });
+  document.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
+  // Also prevent Ctrl+= and Ctrl+- browser zoom shortcuts
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
+      e.preventDefault();
+    }
+  });
 
   function keyPressed() {
     if (key === '=' || key === '+') {
