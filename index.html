@@ -30,12 +30,12 @@
       font-size: 16px;
       font-weight: 600;
       letter-spacing: 0.05em;
-      color: #5B21B6;
+      color: #111111;
       margin-bottom: 4px;
     }
     .subtitle {
       font-size: 11px;
-      color: #8B7AAF;
+      color: #888;
       letter-spacing: 0.03em;
     }
     .toggle-container {
@@ -59,8 +59,8 @@
       letter-spacing: 0.02em;
     }
     .toggle-btn.active {
-      color: #5B21B6;
-      background: rgba(91,33,182,0.08);
+      color: #111;
+      background: rgba(0,0,0,0.08);
     }
     .toggle-btn:hover:not(.active) {
       color: #555;
@@ -92,7 +92,7 @@
       color: #333;
       width: 180px;
     }
-    #search:focus { border-color: rgba(91,33,182,0.4); }
+    #search:focus { border-color: rgba(0,0,0,0.3); }
     #search::placeholder { color: #bbb; }
     #search-clear {
       font-size: 14px;
@@ -124,7 +124,7 @@
     .legend-title {
       font-size: 9px;
       font-weight: 600;
-      color: #8B7AAF;
+      color: #999;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       margin-bottom: 2px;
@@ -241,20 +241,50 @@
       p.tags.length > 0 || p.pathways.length > 0 || p.units.length > 0
     );
 
-    // Group pathways by platform — purple-based palette to match CRL website
-    const platformColors = {
-      'E&E': '#7C3AED',   // Vivid violet
-      'I&S': '#5B21B6',   // Deep purple
-      'T&M': '#8B5CF6',   // Medium lavender
-      'S&I': '#6D28D9',   // Rich purple
-      'N&V': '#A78BFA',   // Soft violet
+    // Unit colours — matched to WordPress category colours
+    const wpUnitColors = {
+      'Unit 1': '#E8752F',   // Orange
+      'Unit 2': '#4A7FBF',   // Blue
+      'Unit 3': '#8C8C8C',   // Grey
+      'Unit 4': '#2D9F6F',   // Green
+      'Unit 5': '#4A7FBF',   // Blue
+      'Unit 6': '#2D9F6F',   // Green
+      'Unit 7': '#D94F8C',   // Pink
+      'Unit 8': '#D96A3F',   // Red-orange
+      'Unit 9': '#E8A0BF',   // Light pink
+      'Unit 10': '#D94F3F',  // Red
     };
-    const extraColors = { 'Core Reading': '#9CA3AF', 'Lectures & Debates': '#6B7280' };
+    data.allUnits.forEach(u => { unitColors[u] = wpUnitColors[u] || palette[0]; });
+
+    // Platform colours — each platform gets a distinct hue-shifted colour
+    // derived from its parent unit (P1 = Unit 4, P2 = Unit 6)
+    // 5 platforms × 2 projects = 10 distinct colours via hue rotation
+    const platformHues = {
+      'E&E': { h: 210, s: 65, l: 55 },   // Blue
+      'I&S': { h: 270, s: 60, l: 50 },   // Purple
+      'T&M': { h: 340, s: 65, l: 55 },   // Rose/pink
+      'S&I': { h: 155, s: 60, l: 42 },   // Teal-green
+      'N&V': { h: 35,  s: 70, l: 52 },   // Amber/orange
+    };
+    // P1 = saturated, P2 = slightly lighter/shifted
     data.allPathways.forEach(p => {
-      const match = Object.keys(platformColors).find(k => p.includes(k));
-      pathwayColors[p] = match ? platformColors[match] : (extraColors[p] || '#6B3FA0');
+      const m = p.match(/^P([12])-(.+)$/);
+      if (m) {
+        const base = platformHues[m[2]];
+        if (base) {
+          const period = parseInt(m[1]);
+          const l = period === 1 ? base.l : base.l + 12;
+          const s = period === 1 ? base.s : base.s - 8;
+          pathwayColors[p] = 'hsl(' + base.h + ',' + s + '%,' + l + '%)';
+        } else {
+          pathwayColors[p] = '#6B3FA0';
+        }
+      } else {
+        // Shared categories (Core Reading, Lectures & Debates)
+        const extraColors = { 'Core Reading': '#6B7280', 'Lectures & Debates': '#0D9488' };
+        pathwayColors[p] = extraColors[p] || '#6B3FA0';
+      }
     });
-    assignColors(data.allUnits, unitColors);
 
     const tagCounts = {};
     posts.forEach(p => p.tags.forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
@@ -324,8 +354,10 @@
     });
 
     posts.forEach(post => {
-      // Post dots use a soft purple-grey to match the CRL brand
-      const postColor = '#C4B5D8';
+      // Post dots use their platform/unit colour; fallback to neutral grey
+      let postColor = '#BBBBBB';
+      if (post.pathways.length > 0) postColor = pathwayColors[post.pathways[0]] || '#BBBBBB';
+      else if (post.units.length > 0) postColor = unitColors[post.units[0]] || '#BBBBBB';
 
       graphNodes.push({
         id: post.id, label: post.title, type: 'post', radius: 5,
@@ -596,11 +628,11 @@
       if (node.displayAlpha > 20) {
         textAlign(CENTER, CENTER);
 
-        // Label text above the circle — lighter weight to match CRL site
-        fill(50, 30, 70, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 180));
+        // Label text above the circle
+        fill(0, 0, 0, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 200));
         const labelSize = max(10, node.displayRadius * 0.55);
         textSize(labelSize);
-        textStyle(NORMAL);
+        textStyle(BOLD);
         const labelLines = node.label.split('\n');
         const lh = labelSize * 1.2;
         const labelY = ny - node.displayRadius - 8 - (labelLines.length - 1) * lh;
