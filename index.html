@@ -30,12 +30,12 @@
       font-size: 16px;
       font-weight: 600;
       letter-spacing: 0.05em;
-      color: #111111;
+      color: #5B21B6;
       margin-bottom: 4px;
     }
     .subtitle {
       font-size: 11px;
-      color: #888;
+      color: #8B7AAF;
       letter-spacing: 0.03em;
     }
     .toggle-container {
@@ -59,8 +59,8 @@
       letter-spacing: 0.02em;
     }
     .toggle-btn.active {
-      color: #111;
-      background: rgba(0,0,0,0.08);
+      color: #5B21B6;
+      background: rgba(91,33,182,0.08);
     }
     .toggle-btn:hover:not(.active) {
       color: #555;
@@ -92,7 +92,7 @@
       color: #333;
       width: 180px;
     }
-    #search:focus { border-color: rgba(0,0,0,0.3); }
+    #search:focus { border-color: rgba(91,33,182,0.4); }
     #search::placeholder { color: #bbb; }
     #search-clear {
       font-size: 14px;
@@ -124,7 +124,7 @@
     .legend-title {
       font-size: 9px;
       font-weight: 600;
-      color: #999;
+      color: #8B7AAF;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       margin-bottom: 2px;
@@ -241,15 +241,15 @@
       p.tags.length > 0 || p.pathways.length > 0 || p.units.length > 0
     );
 
-    // Group pathways by platform so P1/P2 variants share the same colour
+    // Group pathways by platform — purple-based palette to match CRL website
     const platformColors = {
-      'E&E': '#3B82F6',   // Sapphire — royal blue
-      'I&S': '#7C3AED',   // Amethyst — deep violet
-      'T&M': '#DB2777',   // Ruby — deep rose
-      'S&I': '#059669',   // Emerald — forest green
-      'N&V': '#D97706',   // Topaz — deep amber
+      'E&E': '#7C3AED',   // Vivid violet
+      'I&S': '#5B21B6',   // Deep purple
+      'T&M': '#8B5CF6',   // Medium lavender
+      'S&I': '#6D28D9',   // Rich purple
+      'N&V': '#A78BFA',   // Soft violet
     };
-    const extraColors = { 'Core Reading': '#6B7280', 'Lectures & Debates': '#0D9488' };
+    const extraColors = { 'Core Reading': '#9CA3AF', 'Lectures & Debates': '#6B7280' };
     data.allPathways.forEach(p => {
       const match = Object.keys(platformColors).find(k => p.includes(k));
       pathwayColors[p] = match ? platformColors[match] : (extraColors[p] || '#6B3FA0');
@@ -324,10 +324,8 @@
     });
 
     posts.forEach(post => {
-      // Post dots always use pathway colour; fallback to neutral grey
-      let postColor = '#AAAAAA';
-      if (post.pathways.length > 0) postColor = pathwayColors[post.pathways[0]] || '#AAAAAA';
-      else if (post.units.length > 0) postColor = unitColors[post.units[0]] || '#AAAAAA';
+      // Post dots use a soft purple-grey to match the CRL brand
+      const postColor = '#C4B5D8';
 
       graphNodes.push({
         id: post.id, label: post.title, type: 'post', radius: 5,
@@ -535,7 +533,7 @@
       } else if (isHL) {
         targetLA = 140; targetLW = 1.2; useColor = true;
       } else {
-        targetLA = 18; targetLW = 0.4;
+        targetLA = 12; targetLW = 0.3;
       }
       // Dim links whose endpoints don't match search
       if (searchQuery) {
@@ -545,7 +543,7 @@
           targetLA = min(targetLA, 6); targetLW = min(targetLW, 0.2);
         }
       }
-      if (link.displayAlpha == null) { link.displayAlpha = 18; link.displayWeight = 0.4; }
+      if (link.displayAlpha == null) { link.displayAlpha = 12; link.displayWeight = 0.3; }
       link.displayAlpha = smoothLerp(link.displayAlpha, targetLA, HOVER_LERP);
       link.displayWeight = smoothLerp(link.displayWeight, targetLW, HOVER_LERP);
 
@@ -598,11 +596,11 @@
       if (node.displayAlpha > 20) {
         textAlign(CENTER, CENTER);
 
-        // Label text above the circle
-        fill(0, 0, 0, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 200));
+        // Label text above the circle — lighter weight to match CRL site
+        fill(50, 30, 70, min(node.displayAlpha, hoveredNode && hoveredNode.id === node.id ? 255 : 180));
         const labelSize = max(10, node.displayRadius * 0.55);
         textSize(labelSize);
-        textStyle(BOLD);
+        textStyle(NORMAL);
         const labelLines = node.label.split('\n');
         const lh = labelSize * 1.2;
         const labelY = ny - node.displayRadius - 8 - (labelLines.length - 1) * lh;
